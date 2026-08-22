@@ -34,7 +34,7 @@ declare global {
 }
 
 /** Mic input: dictate into the composer via the browser's speech recognition. */
-export function useSpeechInput(onResult: (text: string) => void) {
+export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => void) {
   const [supported, setSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -67,7 +67,10 @@ export function useSpeechInput(onResult: (text: string) => void) {
       }
       onResult(baseTextRef.current + finalTextRef.current + interim);
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      onEnd?.();
+    };
     recognition.onerror = () => setIsListening(false);
 
     recognitionRef.current = recognition;

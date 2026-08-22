@@ -205,13 +205,43 @@ function Chat({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [speakEnabled, setSpeakEnabled] = useState(
-    () => localStorage.getItem(SPEAK_KEY) === "true",
+    // On by default (talks back automatically) — explicit "false" is the only way off.
+    () => localStorage.getItem(SPEAK_KEY) !== "false",
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const assistantTextRef = useRef("");
+  const inputRef = useRef(input);
+  const isStreamingRef = useRef(isStreaming);
+  const speakEnabledRef = useRef(speakEnabled);
+  const suppressMicAutoSendRef = useRef(false);
 
-  const mic = useSpeechInput((text) => setInput(text));
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+  useEffect(() => {
+    speakEnabledRef.current = speakEnabled;
+  }, [speakEnabled]);
+
   const speech = useSpeechOutput();
+  const mic = useSpeechInput(
+    (text) => setInput(text),
+    // Fires once recognition actually stops (mic button clicked, or the
+    // browser detected silence) — auto-send, closing the voice loop the way
+    // ChatGPT's voice mode does, rather than requiring a separate tap on Send.
+    // Suppressed when the stop was itself triggered by a manual Send, so a
+    // still-listening mic doesn't cause the same message to send twice.
+    () => {
+      if (suppressMicAutoSendRef.current) {
+        suppressMicAutoSendRef.current = false;
+        return;
+      }
+      const text = inputRef.current.trim();
+      if (text && !isStreamingRef.current) void sendMessage(text);
+    },
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -235,12 +265,7 @@ function Chat({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || isStreaming) return;
-
-    if (mic.isListening) mic.stop();
+  async function sendMessage(text: string) {
     setError(null);
     setInput("");
     setMessages((prev) => [
@@ -266,7 +291,7 @@ function Chat({
         },
         (message) => setError(message),
       );
-      if (speakEnabled && assistantTextRef.current) {
+      if (speakEnabledRef.current && assistantTextRef.current) {
         speech.speak(assistantTextRef.current);
       }
     } catch {
@@ -274,6 +299,17 @@ function Chat({
     } finally {
       setIsStreaming(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || isStreaming) return;
+    if (mic.isListening) {
+      suppressMicAutoSendRef.current = true;
+      mic.stop();
+    }
+    void sendMessage(text);
   }
 
   return (
