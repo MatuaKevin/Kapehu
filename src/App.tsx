@@ -1,13 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { CompassMark } from "./Compass";
-import { MicIcon, SpeakerIcon } from "./Icons";
+import { MicIcon, SpeakerIcon, PaperclipIcon, CloseIcon } from "./Icons";
 import { useSpeechInput, useSpeechOutput } from "./useSpeech";
+import { encodeImageFile, firstImageFromClipboard, type EncodedImage } from "./imageUtils";
 
 const SPEAK_KEY = "kapehu.speak";
+
+interface MessageImage {
+  mediaType: string;
+  base64: string;
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: MessageImage;
+}
+
+interface RawMessageRow {
+  role: "user" | "assistant";
+  content: string;
+  image_media_type: string | null;
+  image_base64: string | null;
+}
+
+function rowToMessage(row: RawMessageRow): ChatMessage {
+  return {
+    role: row.role,
+    content: row.content,
+    image:
+      row.image_media_type && row.image_base64
+        ? { mediaType: row.image_media_type, base64: row.image_base64 }
+        : undefined,
+  };
 }
 
 const PASSCODE_KEY = "kapehu.passcode";
@@ -27,13 +52,14 @@ async function fetchMessages(passcode: string): Promise<ChatMessage[] | null> {
   });
   if (response.status === 401) return null;
   if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
-  const data = (await response.json()) as { messages: ChatMessage[] };
-  return data.messages;
+  const data = (await response.json()) as { messages: RawMessageRow[] };
+  return data.messages.map(rowToMessage);
 }
 
 async function streamChat(
   passcode: string,
   message: string,
+  image: EncodedImage | null,
   onDelta: (text: string) => void,
   onError: (message: string) => void,
 ) {
@@ -43,7 +69,10 @@ async function streamChat(
       "Content-Type": "application/json",
       Authorization: `Bearer ${passcode}`,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      image: image ? { mediaType: image.mediaType, base64: image.base64 } : undefined,
+    }),
   });
 
   if (response.status === 401) {
@@ -202,6 +231,8 @@ function Chat({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
+  const [pendingImage, setPendingImage] = useState<EncodedImage | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [speakEnabled, setSpeakEnabled] = useState(
@@ -209,10 +240,12 @@ function Chat({
     () => localStorage.getItem(SPEAK_KEY) !== "false",
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const assistantTextRef = useRef("");
   const inputRef = useRef(input);
   const isStreamingRef = useRef(isStreaming);
   const speakEnabledRef = useRef(speakEnabled);
+  const pendingImageRef = useRef(pendingImage);
   const suppressMicAutoSendRef = useRef(false);
 
   useEffect(() => {
@@ -224,6 +257,9 @@ function Chat({
   useEffect(() => {
     speakEnabledRef.current = speakEnabled;
   }, [speakEnabled]);
+  useEffect(() => {
+    pendingImageRef.current = pendingImage;
+  }, [pendingImage]);
 
   const speech = useSpeechOutput();
   const mic = useSpeechInput(
@@ -239,7 +275,9 @@ function Chat({
         return;
       }
       const text = inputRef.current.trim();
-      if (text && !isStreamingRef.current) void sendMessage(text);
+      if ((text || pendingImageRef.current) && !isStreamingRef.current) {
+        void sendMessage(text, pendingImageRef.current);
+      }
     },
   );
 
@@ -265,12 +303,37 @@ function Chat({
     }
   }
 
-  async function sendMessage(text: string) {
+  async function attachFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    setAttaching(true);
+    try {
+      setPendingImage(await encodeImageFile(file));
+    } catch {
+      setError("Couldn't read that image — try a different one.");
+    } finally {
+      setAttaching(false);
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = firstImageFromClipboard(e.clipboardData);
+    if (file) {
+      e.preventDefault();
+      void attachFile(file);
+    }
+  }
+
+  async function sendMessage(text: string, image: EncodedImage | null) {
     setError(null);
     setInput("");
+    setPendingImage(null);
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: text },
+      {
+        role: "user",
+        content: text,
+        image: image ? { mediaType: image.mediaType, base64: image.base64 } : undefined,
+      },
       { role: "assistant", content: "" },
     ]);
     setIsStreaming(true);
@@ -280,6 +343,7 @@ function Chat({
       await streamChat(
         passcode,
         text,
+        image,
         (delta) => {
           assistantTextRef.current += delta;
           setMessages((prev) => {
@@ -304,12 +368,12 @@ function Chat({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if ((!text && !pendingImage) || isStreaming) return;
     if (mic.isListening) {
       suppressMicAutoSendRef.current = true;
       mic.stop();
     }
-    void sendMessage(text);
+    void sendMessage(text, pendingImage);
   }
 
   return (
@@ -353,6 +417,13 @@ function Chat({
           return (
             <div key={index} className={`bubble ${message.role} enter`}>
               <div className="bubble-content">
+                {message.image && (
+                  <img
+                    className="bubble-image"
+                    src={`data:${message.image.mediaType};base64,${message.image.base64}`}
+                    alt=""
+                  />
+                )}
                 {message.content}
                 {isLiveAssistant && !message.content && (
                   <span className="thinking">
@@ -368,36 +439,82 @@ function Chat({
         {error && <div className="error">{error}</div>}
       </main>
 
-      <form className="composer" onSubmit={handleSubmit}>
-        {mic.supported && (
+      <div className="composer-wrap">
+        {pendingImage && (
+          <div className="image-preview">
+            <img src={pendingImage.previewUrl} alt="Attached" />
+            <button
+              type="button"
+              className="image-preview-remove"
+              onClick={() => setPendingImage(null)}
+              title="Remove image"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        )}
+        <form className="composer" onSubmit={handleSubmit}>
+          {mic.supported && (
+            <button
+              type="button"
+              className={`mic-button${mic.isListening ? " listening" : ""}`}
+              onClick={toggleMic}
+              disabled={isStreaming}
+              title={mic.isListening ? "Stop dictating" : "Speak your message"}
+              aria-pressed={mic.isListening}
+            >
+              <MicIcon />
+            </button>
+          )}
           <button
             type="button"
-            className={`mic-button${mic.isListening ? " listening" : ""}`}
-            onClick={toggleMic}
-            disabled={isStreaming}
-            title={mic.isListening ? "Stop dictating" : "Speak your message"}
-            aria-pressed={mic.isListening}
+            className="attach-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isStreaming || attaching}
+            title="Attach an image"
           >
-            <MicIcon />
+            <PaperclipIcon />
           </button>
-        )}
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit(e);
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="visually-hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void attachFile(file);
+              e.target.value = "";
+            }}
+          />
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onPaste={handlePaste}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+            placeholder={
+              mic.isListening
+                ? "Listening…"
+                : pendingImage
+                  ? "Add a caption (optional)…"
+                  : "Talk to Kapehu, or paste a screenshot..."
             }
-          }}
-          placeholder={mic.isListening ? "Listening…" : "Talk to Kapehu..."}
-          rows={2}
-          disabled={isStreaming}
-        />
-        <button type="submit" className="send-button" disabled={isStreaming || !input.trim()}>
-          Send
-        </button>
-      </form>
+            rows={2}
+            disabled={isStreaming}
+          />
+          <button
+            type="submit"
+            className="send-button"
+            disabled={isStreaming || (!input.trim() && !pendingImage)}
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

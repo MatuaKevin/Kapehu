@@ -7,7 +7,8 @@ export default async (req: Request) => {
 
   const db = getDatabase();
   const rows = await db.sql`
-    SELECT role, content, created_at FROM messages ORDER BY created_at ASC
+    SELECT role, content, image_media_type, image_base64, created_at
+    FROM messages ORDER BY created_at ASC
   `;
 
   return new Response(JSON.stringify({ messages: rows }), {

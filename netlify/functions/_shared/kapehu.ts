@@ -28,3 +28,50 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export type SupportedImageType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+export const SUPPORTED_IMAGE_TYPES: ReadonlySet<SupportedImageType> = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+function isSupportedImageType(value: string): value is SupportedImageType {
+  return (SUPPORTED_IMAGE_TYPES as Set<string>).has(value);
+}
+
+export interface StoredMessageRow {
+  role: "user" | "assistant";
+  content: string;
+  image_media_type: string | null;
+  image_base64: string | null;
+}
+
+export type ClaudeContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: SupportedImageType; data: string } };
+
+/**
+ * A message with an image is sent to Claude as an image block (Claude reads
+ * the picture) plus an optional text block for any caption; a plain message
+ * stays a bare string, which is all older rows (from before images existed)
+ * ever have.
+ */
+export function rowToClaudeMessage(row: StoredMessageRow): {
+  role: "user" | "assistant";
+  content: string | ClaudeContentBlock[];
+} {
+  if (!row.image_base64 || !row.image_media_type || !isSupportedImageType(row.image_media_type)) {
+    return { role: row.role, content: row.content };
+  }
+  const blocks: ClaudeContentBlock[] = [
+    {
+      type: "image",
+      source: { type: "base64", media_type: row.image_media_type, data: row.image_base64 },
+    },
+  ];
+  if (row.content) blocks.push({ type: "text", text: row.content });
+  return { role: row.role, content: blocks };
+}

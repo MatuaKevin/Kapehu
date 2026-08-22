@@ -2,27 +2,65 @@ import type { Config } from "@netlify/functions";
 import Anthropic from "@anthropic-ai/sdk";
 import { getDatabase } from "@netlify/database";
 import { isAuthorized, unauthorizedResponse } from "./_shared/auth.ts";
-import { KAPEHU_MODEL, KAPEHU_SYSTEM_PROMPT, type ChatMessage } from "./_shared/kapehu.ts";
+import {
+  KAPEHU_MODEL,
+  KAPEHU_SYSTEM_PROMPT,
+  SUPPORTED_IMAGE_TYPES,
+  rowToClaudeMessage,
+  type ClaudeContentBlock,
+  type StoredMessageRow,
+  type SupportedImageType,
+} from "./_shared/kapehu.ts";
 
 const client = new Anthropic();
+
+interface IncomingImage {
+  mediaType: SupportedImageType;
+  base64: string;
+}
+
+function parseImage(value: unknown): IncomingImage | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.mediaType !== "string" || typeof v.base64 !== "string") return null;
+  if (!(SUPPORTED_IMAGE_TYPES as Set<string>).has(v.mediaType)) return null;
+  return { mediaType: v.mediaType as SupportedImageType, base64: v.base64 };
+}
 
 export default async (req: Request) => {
   if (!isAuthorized(req)) return unauthorizedResponse();
 
-  const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
-  const userMessage = typeof body?.message === "string" ? body.message.trim() : "";
-  if (!userMessage) {
-    return new Response(JSON.stringify({ error: "message must be a non-empty string" }), {
+  const body = (await req.json().catch(() => null)) as { message?: unknown; image?: unknown } | null;
+  const userText = typeof body?.message === "string" ? body.message.trim() : "";
+  const image = parseImage(body?.image);
+
+  if (!userText && !image) {
+    return new Response(JSON.stringify({ error: "message or image is required" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   const db = getDatabase();
-  const historyRows = await db.sql`SELECT role, content FROM messages ORDER BY created_at ASC`;
-  const history = historyRows as unknown as ChatMessage[];
+  const historyRows = await db.sql`
+    SELECT role, content, image_media_type, image_base64
+    FROM messages ORDER BY created_at ASC
+  `;
+  const history = (historyRows as unknown as StoredMessageRow[]).map(rowToClaudeMessage);
 
-  await db.sql`INSERT INTO messages (role, content) VALUES (${"user"}, ${userMessage})`;
+  await db.sql`
+    INSERT INTO messages (role, content, image_media_type, image_base64)
+    VALUES (${"user"}, ${userText}, ${image?.mediaType ?? null}, ${image?.base64 ?? null})
+  `;
+
+  const newBlocks: ClaudeContentBlock[] = [];
+  if (image) {
+    newBlocks.push({
+      type: "image",
+      source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+    });
+  }
+  if (userText) newBlocks.push({ type: "text", text: userText });
 
   const encoder = new TextEncoder();
   let assistantText = "";
@@ -38,7 +76,7 @@ export default async (req: Request) => {
           model: KAPEHU_MODEL,
           max_tokens: 4096,
           system: KAPEHU_SYSTEM_PROMPT,
-          messages: [...history, { role: "user", content: userMessage }],
+          messages: [...history, { role: "user", content: newBlocks }],
         });
 
         for await (const event of claudeStream) {

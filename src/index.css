@@ -322,11 +322,68 @@ body {
 
 /* --- Composer --- */
 
+.composer-wrap {
+  border-top: 1px solid var(--border);
+}
+
+.image-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.5rem 0;
+}
+
+.image-preview img {
+  height: 56px;
+  width: 56px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.image-preview-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.image-preview-remove:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.bubble-image {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+  object-fit: contain;
+}
+
 .composer {
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.5rem 1.5rem;
-  border-top: 1px solid var(--border);
 }
 
 .composer textarea {
@@ -348,7 +405,8 @@ body {
   box-shadow: 0 0 0 3px rgba(211, 167, 92, 0.12);
 }
 
-.mic-button {
+.mic-button,
+.attach-button {
   flex-shrink: 0;
   width: 44px;
   height: 44px;
@@ -366,12 +424,14 @@ body {
   align-self: flex-end;
 }
 
-.mic-button:hover:not(:disabled) {
+.mic-button:hover:not(:disabled),
+.attach-button:hover:not(:disabled) {
   border-color: var(--accent-dim);
   color: var(--text);
 }
 
-.mic-button:disabled {
+.mic-button:disabled,
+.attach-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
