@@ -58,6 +58,20 @@ export function PaperclipIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function UserIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="8.2" r="3.4" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M4.8 20c1-3.6 4-5.6 7.2-5.6s6.2 2 7.2 5.6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function CloseIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">

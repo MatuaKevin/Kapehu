@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CompassMark } from "./Compass";
-import { MicIcon, SpeakerIcon, PaperclipIcon, CloseIcon } from "./Icons";
+import { MicIcon, SpeakerIcon, PaperclipIcon, CloseIcon, UserIcon } from "./Icons";
 import { useSpeechInput, useSpeechOutput } from "./useSpeech";
 import { encodeImageFile, firstImageFromClipboard, type EncodedImage } from "./imageUtils";
 
@@ -54,6 +54,27 @@ async function fetchMessages(passcode: string): Promise<ChatMessage[] | null> {
   if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
   const data = (await response.json()) as { messages: RawMessageRow[] };
   return data.messages.map(rowToMessage);
+}
+
+async function fetchProfile(passcode: string): Promise<string> {
+  const response = await fetch("/api/profile", {
+    headers: { Authorization: `Bearer ${passcode}` },
+  });
+  if (!response.ok) throw new Error(`Failed to load profile (${response.status})`);
+  const data = (await response.json()) as { notes: string };
+  return data.notes;
+}
+
+async function saveProfile(passcode: string, notes: string): Promise<void> {
+  const response = await fetch("/api/profile", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${passcode}`,
+    },
+    body: JSON.stringify({ notes }),
+  });
+  if (!response.ok) throw new Error(`Failed to save profile (${response.status})`);
 }
 
 async function streamChat(
@@ -235,6 +256,7 @@ function Chat({
   const [attaching, setAttaching] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(
     // On by default (talks back automatically) — explicit "false" is the only way off.
     () => localStorage.getItem(SPEAK_KEY) !== "false",
@@ -390,18 +412,30 @@ function Chat({
             <p className="tagline">Your Personal AI Wayfinder</p>
           </div>
         </div>
-        {speech.supported && (
+        <div className="header-actions">
           <button
             type="button"
-            className={`icon-toggle${speakEnabled ? " active" : ""}`}
-            onClick={toggleSpeak}
-            title={speakEnabled ? "Kapehu will read replies aloud" : "Read replies aloud"}
-            aria-pressed={speakEnabled}
+            className="icon-toggle"
+            onClick={() => setShowProfile(true)}
+            title="Tell Kapehu about yourself"
           >
-            <SpeakerIcon muted={!speakEnabled} />
+            <UserIcon />
           </button>
-        )}
+          {speech.supported && (
+            <button
+              type="button"
+              className={`icon-toggle${speakEnabled ? " active" : ""}`}
+              onClick={toggleSpeak}
+              title={speakEnabled ? "Kapehu will read replies aloud" : "Read replies aloud"}
+              aria-pressed={speakEnabled}
+            >
+              <SpeakerIcon muted={!speakEnabled} />
+            </button>
+          )}
+        </div>
       </header>
+
+      {showProfile && <ProfileEditor passcode={passcode} onClose={() => setShowProfile(false)} />}
 
       <main className="messages" ref={scrollRef}>
         {messages.length === 0 && (
@@ -514,6 +548,90 @@ function Chat({
             Send
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditor({ passcode, onClose }: { passcode: string; onClose: () => void }) {
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchProfile(passcode)
+      .then((loaded) => {
+        if (!cancelled) setNotes(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't load your notes.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [passcode]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await saveProfile(passcode, notes);
+      onClose();
+    } catch {
+      setError("Couldn't save — try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>About you</h2>
+          <button type="button" className="modal-close" onClick={onClose} title="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <p className="modal-hint">
+          Durable facts Kapehu should always have — your work, current projects, goals, whatever's
+          relevant. This is included in every conversation, so you don't have to re-explain it.
+          Kapehu already remembers everything you've said in chat too; this is just for what you
+          want it to know up front.
+        </p>
+        {loading ? (
+          <div className="modal-loading">
+            <CompassMark size={28} seeking />
+          </div>
+        ) : (
+          <textarea
+            className="modal-textarea"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. I run GatherNow, a shared-rewards app for bars — currently focused on the Beach Bar trial. I'm based in New Zealand..."
+            rows={8}
+            autoFocus
+          />
+        )}
+        {error && <div className="error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="modal-cancel" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="send-button"
+            onClick={handleSave}
+            disabled={loading || saving}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -4,8 +4,8 @@ import { getDatabase } from "@netlify/database";
 import { isAuthorized, unauthorizedResponse } from "./_shared/auth.ts";
 import {
   KAPEHU_MODEL,
-  KAPEHU_SYSTEM_PROMPT,
   SUPPORTED_IMAGE_TYPES,
+  buildSystemPrompt,
   rowToClaudeMessage,
   type ClaudeContentBlock,
   type StoredMessageRow,
@@ -42,11 +42,15 @@ export default async (req: Request) => {
   }
 
   const db = getDatabase();
-  const historyRows = await db.sql`
-    SELECT role, content, image_media_type, image_base64
-    FROM messages ORDER BY created_at ASC
-  `;
+  const [historyRows, profileRows] = await Promise.all([
+    db.sql`
+      SELECT role, content, image_media_type, image_base64
+      FROM messages ORDER BY created_at ASC
+    `,
+    db.sql`SELECT notes FROM profile WHERE id = 1`,
+  ]);
   const history = (historyRows as unknown as StoredMessageRow[]).map(rowToClaudeMessage);
+  const systemPrompt = buildSystemPrompt((profileRows[0]?.notes as string | undefined) ?? "");
 
   await db.sql`
     INSERT INTO messages (role, content, image_media_type, image_base64)
@@ -75,7 +79,7 @@ export default async (req: Request) => {
         const claudeStream = client.messages.stream({
           model: KAPEHU_MODEL,
           max_tokens: 4096,
-          system: KAPEHU_SYSTEM_PROMPT,
+          system: systemPrompt,
           messages: [...history, { role: "user", content: newBlocks }],
         });
 

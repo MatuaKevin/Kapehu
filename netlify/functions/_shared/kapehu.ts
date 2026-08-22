@@ -24,6 +24,23 @@ How you work:
 
 Keep responses conversational — usually a few short paragraphs at most, not a report.`;
 
+/**
+ * Profile notes are durable facts the person has written about themselves
+ * (job, goals, current situation, preferences) — separate from the flowing
+ * conversation so Kapehu has them up front instead of inferring from
+ * scrollback. Optional: an empty profile just means the base prompt.
+ */
+export function buildSystemPrompt(profileNotes: string): string {
+  const trimmed = profileNotes.trim();
+  if (!trimmed) return KAPEHU_SYSTEM_PROMPT;
+  return `${KAPEHU_SYSTEM_PROMPT}
+
+Here's what this person has told you about themselves — treat it as background you already
+know, not something to re-ask about, and weave it in naturally rather than reciting it back:
+
+${trimmed}`;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

@@ -291,7 +291,12 @@ body {
   border-radius: 8px;
 }
 
-/* --- Header icon toggle (speaker) --- */
+/* --- Header icon toggles (profile, speaker) --- */
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
 
 .icon-toggle {
   display: flex;
@@ -538,4 +543,132 @@ body {
 .passcode-gate button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- About-you modal --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 8, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 10;
+  animation: fadeIn 0.2s ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal {
+  width: 100%;
+  max-width: 460px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  animation: riseIn 0.25s ease both;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  color: var(--accent-bright);
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--text);
+}
+
+.modal-hint {
+  font-size: 0.83rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+.modal-loading {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.modal-textarea {
+  width: 100%;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.92rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.modal-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 3px rgba(211, 167, 92, 0.12);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.modal-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0 1.1rem;
+  height: 38px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.modal-cancel:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.modal-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-actions .send-button {
+  height: 38px;
 }
