@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CompassMark } from "./Compass";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -6,6 +7,15 @@ interface ChatMessage {
 }
 
 const PASSCODE_KEY = "kapehu.passcode";
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Still up";
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+  return "Good evening";
+}
 
 async function fetchMessages(passcode: string): Promise<ChatMessage[] | null> {
   const response = await fetch("/api/messages", {
@@ -117,8 +127,9 @@ export default function App() {
   if (loadingHistory) {
     return (
       <div className="app">
-        <div className="empty-state" style={{ margin: "auto" }}>
-          Loading your conversation…
+        <div className="loading-state">
+          <CompassMark size={40} seeking />
+          <p>Finding your bearings…</p>
         </div>
       </div>
     );
@@ -153,10 +164,11 @@ function PasscodeGate({ onUnlocked }: { onUnlocked: (passcode: string) => void }
 
   return (
     <div className="app">
+      <div className="backdrop-rose" aria-hidden="true">
+        <CompassMark size={520} />
+      </div>
       <div className="passcode-gate">
-        <span className="compass" aria-hidden="true">
-          🧭
-        </span>
+        <CompassMark size={64} seeking={checking} />
         <h1>Kapehu</h1>
         <p className="tagline">Your Personal AI Wayfinder</p>
         <form onSubmit={handleSubmit}>
@@ -168,7 +180,7 @@ function PasscodeGate({ onUnlocked }: { onUnlocked: (passcode: string) => void }
             autoFocus
           />
           <button type="submit" disabled={checking || !value.trim()}>
-            {checking ? "Checking…" : "Enter"}
+            {checking ? "Finding bearings…" : "Enter"}
           </button>
         </form>
         {error && <div className="error">{error}</div>}
@@ -231,11 +243,13 @@ function Chat({
 
   return (
     <div className="app">
+      <div className="backdrop-rose" aria-hidden="true">
+        <CompassMark size={640} seeking={isStreaming} />
+      </div>
+
       <header className="header">
         <div className="brand">
-          <span className="compass" aria-hidden="true">
-            🧭
-          </span>
+          <CompassMark size={34} seeking={isStreaming} />
           <div>
             <h1>Kapehu</h1>
             <p className="tagline">Your Personal AI Wayfinder</p>
@@ -246,16 +260,29 @@ function Chat({
       <main className="messages" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="empty-state">
+            <CompassMark size={48} />
+            <p className="empty-greeting">{greeting()}.</p>
             <p>What's on your mind? Kapehu is here to help you find your bearings.</p>
           </div>
         )}
-        {messages.map((message, index) => (
-          <div key={index} className={`bubble ${message.role}`}>
-            <div className="bubble-content">
-              {message.content || (message.role === "assistant" && isStreaming ? "…" : "")}
+        {messages.map((message, index) => {
+          const isLiveAssistant =
+            isStreaming && index === messages.length - 1 && message.role === "assistant";
+          return (
+            <div key={index} className={`bubble ${message.role} enter`}>
+              <div className="bubble-content">
+                {message.content}
+                {isLiveAssistant && !message.content && (
+                  <span className="thinking">
+                    <CompassMark size={18} seeking />
+                    seeking direction…
+                  </span>
+                )}
+                {isLiveAssistant && message.content && <span className="caret" />}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {error && <div className="error">{error}</div>}
       </main>
 
