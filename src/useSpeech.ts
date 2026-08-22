@@ -86,15 +86,55 @@ export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => v
   return { supported, isListening, start, stop };
 }
 
+/**
+ * Ranks available system voices and picks the most natural-sounding one.
+ * Browsers (Edge and Chrome on Windows especially) often ship both the old
+ * robotic SAPI voices and much better cloud-backed "Natural"/neural ones —
+ * the platform just doesn't default to the good one.
+ */
+function pickBestVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  if (voices.length === 0) return null;
+  const lang = navigator.language;
+  const baseLang = lang.split("-")[0];
+
+  function score(voice: SpeechSynthesisVoice): number {
+    let s = 0;
+    if (voice.lang === lang) s += 3;
+    else if (voice.lang.split("-")[0] === baseLang) s += 2;
+    if (/natural|neural|premium|enhanced/i.test(voice.name)) s += 6;
+    if (/online/i.test(voice.name)) s += 2;
+    if (!voice.localService) s += 1;
+    return s;
+  }
+
+  return [...voices].sort((a, b) => score(b) - score(a))[0];
+}
+
 /** Reads Kapehu's replies aloud via the browser's speech synthesis. */
 export function useSpeechOutput() {
   const [supported] = useState(() => typeof window !== "undefined" && "speechSynthesis" in window);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    if (!supported) return;
+
+    function loadVoices() {
+      voicesRef.current = window.speechSynthesis.getVoices();
+    }
+    loadVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+  }, [supported]);
 
   function speak(text: string) {
     if (!supported || !text.trim()) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    const bestVoice = pickBestVoice(voicesRef.current);
+    if (bestVoice) utterance.voice = bestVoice;
+    utterance.rate = 1.02;
+    utterance.pitch = 1;
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
