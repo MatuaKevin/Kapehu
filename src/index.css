@@ -291,6 +291,35 @@ body {
   border-radius: 8px;
 }
 
+/* --- Header icon toggle (speaker) --- */
+
+.icon-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.icon-toggle:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.icon-toggle.active {
+  color: var(--accent-bright);
+  border-color: var(--accent-dim);
+  background: rgba(211, 167, 92, 0.08);
+}
+
 /* --- Composer --- */
 
 .composer {
@@ -319,7 +348,52 @@ body {
   box-shadow: 0 0 0 3px rgba(211, 167, 92, 0.12);
 }
 
-.composer button {
+.mic-button {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+  align-self: flex-end;
+}
+
+.mic-button:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.mic-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mic-button.listening {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+  background: rgba(224, 130, 98, 0.1);
+  animation: micPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 130, 98, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(224, 130, 98, 0);
+  }
+}
+
+.send-button {
   background: linear-gradient(160deg, var(--accent-bright), var(--accent));
   color: #1a1300;
   border: none;
@@ -332,15 +406,15 @@ body {
     filter 0.15s;
 }
 
-.composer button:hover:not(:disabled) {
+.send-button:hover:not(:disabled) {
   filter: brightness(1.06);
 }
 
-.composer button:active:not(:disabled) {
+.send-button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-.composer button:disabled {
+.send-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

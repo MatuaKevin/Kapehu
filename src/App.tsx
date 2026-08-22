@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { CompassMark } from "./Compass";
+import { MicIcon, SpeakerIcon } from "./Icons";
+import { useSpeechInput, useSpeechOutput } from "./useSpeech";
+
+const SPEAK_KEY = "kapehu.speak";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -200,17 +204,43 @@ function Chat({
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [speakEnabled, setSpeakEnabled] = useState(
+    () => localStorage.getItem(SPEAK_KEY) === "true",
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const assistantTextRef = useRef("");
+
+  const mic = useSpeechInput((text) => setInput(text));
+  const speech = useSpeechOutput();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  function toggleSpeak() {
+    setSpeakEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem(SPEAK_KEY, String(next));
+      if (!next) speech.stop();
+      return next;
+    });
+  }
+
+  function toggleMic() {
+    if (mic.isListening) {
+      mic.stop();
+    } else {
+      speech.stop();
+      mic.start(input);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || isStreaming) return;
 
+    if (mic.isListening) mic.stop();
     setError(null);
     setInput("");
     setMessages((prev) => [
@@ -219,12 +249,14 @@ function Chat({
       { role: "assistant", content: "" },
     ]);
     setIsStreaming(true);
+    assistantTextRef.current = "";
 
     try {
       await streamChat(
         passcode,
         text,
         (delta) => {
+          assistantTextRef.current += delta;
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
@@ -234,6 +266,9 @@ function Chat({
         },
         (message) => setError(message),
       );
+      if (speakEnabled && assistantTextRef.current) {
+        speech.speak(assistantTextRef.current);
+      }
     } catch {
       setError("Couldn't reach Kapehu. Try again in a moment.");
     } finally {
@@ -244,17 +279,28 @@ function Chat({
   return (
     <div className="app">
       <div className="backdrop-rose" aria-hidden="true">
-        <CompassMark size={640} seeking={isStreaming} />
+        <CompassMark size={640} seeking={isStreaming || speech.isSpeaking} />
       </div>
 
       <header className="header">
         <div className="brand">
-          <CompassMark size={34} seeking={isStreaming} />
+          <CompassMark size={34} seeking={isStreaming || speech.isSpeaking} />
           <div>
             <h1>Kapehu</h1>
             <p className="tagline">Your Personal AI Wayfinder</p>
           </div>
         </div>
+        {speech.supported && (
+          <button
+            type="button"
+            className={`icon-toggle${speakEnabled ? " active" : ""}`}
+            onClick={toggleSpeak}
+            title={speakEnabled ? "Kapehu will read replies aloud" : "Read replies aloud"}
+            aria-pressed={speakEnabled}
+          >
+            <SpeakerIcon muted={!speakEnabled} />
+          </button>
+        )}
       </header>
 
       <main className="messages" ref={scrollRef}>
@@ -287,6 +333,18 @@ function Chat({
       </main>
 
       <form className="composer" onSubmit={handleSubmit}>
+        {mic.supported && (
+          <button
+            type="button"
+            className={`mic-button${mic.isListening ? " listening" : ""}`}
+            onClick={toggleMic}
+            disabled={isStreaming}
+            title={mic.isListening ? "Stop dictating" : "Speak your message"}
+            aria-pressed={mic.isListening}
+          >
+            <MicIcon />
+          </button>
+        )}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -296,11 +354,11 @@ function Chat({
               handleSubmit(e);
             }
           }}
-          placeholder="Talk to Kapehu..."
+          placeholder={mic.isListening ? "Listening…" : "Talk to Kapehu..."}
           rows={2}
           disabled={isStreaming}
         />
-        <button type="submit" disabled={isStreaming || !input.trim()}>
+        <button type="submit" className="send-button" disabled={isStreaming || !input.trim()}>
           Send
         </button>
       </form>
