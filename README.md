@@ -2,56 +2,78 @@
 
 **Your Personal AI Wayfinder.**
 
-A small full-stack chat app: a React frontend talking to an Express backend that calls the
-Claude API (`claude-opus-5`) with a "wayfinder" coaching persona — oriented toward helping you
-get clear on a decision or situation and leave with a concrete next step, rather than generic
-advice.
+A chat app deployed on Netlify: a React frontend, Netlify Functions calling the Claude API
+(`claude-opus-5`) with a "wayfinder" coaching persona, and a Netlify-managed Postgres database so
+your conversation follows you across every device — log in with the same passcode from your
+phone, laptop, wherever, and you're back in the same conversation.
 
 ## Structure
 
 ```
 kapehu/
-├── server/   Express + TypeScript API (streams Claude's replies over SSE)
-└── web/      Vite + React + TypeScript chat UI
+├── src/                          React + TypeScript chat UI (Vite)
+├── netlify/functions/            Serverless functions: /api/chat, /api/messages
+└── netlify/database/migrations/  Postgres schema (Netlify Database)
 ```
 
-## Local setup
+## How access works
 
-Requires Node.js 20+ and an [Anthropic API key](https://console.anthropic.com/settings/keys).
+There's no multi-user account system — this is a personal app for one person (you) used from
+several of your own devices. A single passcode (`KAPEHU_PASSCODE`, set as a Netlify environment
+variable) gates every device; enter it once per device and it's remembered in that browser.
+Everyone who has the passcode shares the one conversation history, which is the point: pick up on
+your phone where you left off on your laptop.
+
+## Setup
+
+Requires a [Netlify account](https://app.netlify.com) (free), the
+[Netlify CLI](https://docs.netlify.com/cli/get-started/) (`npm install -g netlify-cli`), Node.js
+20+, and an [Anthropic API key](https://console.anthropic.com/settings/keys).
 
 ```bash
 git clone https://github.com/MatuaKevin/kapehu
 cd kapehu
 npm install
 
-cp .env.example .env
-# then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+netlify link          # connect this folder to the Netlify site (choose "kapehu")
+netlify env:set ANTHROPIC_API_KEY sk-ant-...
+netlify env:set KAPEHU_PASSCODE <pick-something-only-you-know>
 
-npm run dev
+npm run dev            # runs `netlify dev` — local dev server with functions + database emulated
 ```
 
-This starts both the API server (`http://localhost:8787`) and the web app
-(`http://localhost:5173`, proxying `/api` to the server) together. Open
-`http://localhost:5173` and start talking to Kapehu.
+Open the local URL it prints (usually `http://localhost:8888`), enter your passcode, and start
+talking to Kapehu. The Postgres database is provisioned automatically the first time you run
+`netlify dev` or deploy — no manual database setup.
 
-- `npm run build` — builds both workspaces for production
-- `npm run start` — runs the built server (serves the API only; deploy `web/dist` as static
-  files behind whatever you're using for the frontend)
+### Deploying
+
+Connect the GitHub repo to the Netlify site in the Netlify dashboard (Site configuration > Build
+& deploy > Continuous deployment) for automatic deploys on push, or deploy directly:
+
+```bash
+netlify deploy --prod
+```
 
 ## How it works
 
-- `server/src/kapehu.ts` — the model ID and Kapehu's system prompt (persona + coaching style)
-- `server/src/index.ts` — a single `POST /api/chat` endpoint that takes the full conversation
-  history and streams Claude's response back as Server-Sent Events
-- `web/src/App.tsx` — the chat UI; conversation history is kept in `localStorage` so it survives
-  a page reload (this is a client-only, single-user app — there's no server-side persistence or
-  auth yet)
+- `netlify/functions/_shared/kapehu.ts` — the model ID and Kapehu's system prompt (persona +
+  coaching style)
+- `netlify/functions/chat.mts` — `POST /api/chat`: takes one new message, loads the shared
+  conversation history from the database, streams Claude's reply back over SSE, and saves both
+  the user's message and Kapehu's reply
+- `netlify/functions/messages.mts` — `GET /api/messages`: returns the full conversation history
+  (used on load and to verify a passcode)
+- `netlify/functions/_shared/auth.ts` — checks the `Authorization: Bearer <passcode>` header
+  against `KAPEHU_PASSCODE`
+- `netlify/database/migrations/` — the one `messages` table (role, content, created_at)
+- `src/App.tsx` — the chat UI: a passcode gate, then the conversation, loaded from and saved to
+  the shared database rather than browser storage
 
 ## Notes
 
-- The API key lives only in `server/.env` (via the root `.env` — see `.env.example`) and is
-  never sent to the browser.
-- This is a starting point, not a finished product: no auth, no multi-user support, no
-  conversation storage beyond the browser. If you want Kapehu to remember you across devices or
-  support more than one person, that's the natural next layer to add (a database + auth in
-  `server/`).
+- `ANTHROPIC_API_KEY` and `KAPEHU_PASSCODE` live only as Netlify environment variables — never in
+  code, never sent to the browser.
+- This is a starting point: single shared conversation, no per-message editing/deletion, no rate
+  limiting beyond Anthropic's own. Natural next steps if you want them: per-conversation threads,
+  a way to search past conversations, voice input.
