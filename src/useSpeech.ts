@@ -40,6 +40,11 @@ export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => v
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = useRef("");
   const finalTextRef = useRef("");
+  // SpeechRecognition.stop() doesn't stop synchronously — it can still fire one
+  // more "onresult" (finalizing whatever was mid-utterance) after stop() returns.
+  // This flag lets onresult ignore that trailing event so it can't repopulate the
+  // composer right after a send has already cleared it.
+  const activeRef = useRef(false);
 
   useEffect(() => {
     setSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition));
@@ -51,6 +56,7 @@ export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => v
 
     baseTextRef.current = currentText ? `${currentText} ` : "";
     finalTextRef.current = "";
+    activeRef.current = true;
 
     const recognition = new Ctor();
     recognition.continuous = true;
@@ -58,6 +64,7 @@ export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => v
     recognition.lang = navigator.language || "en-US";
 
     recognition.onresult = (event) => {
+      if (!activeRef.current) return;
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -79,6 +86,7 @@ export function useSpeechInput(onResult: (text: string) => void, onEnd?: () => v
   }
 
   function stop() {
+    activeRef.current = false;
     recognitionRef.current?.stop();
     setIsListening(false);
   }
